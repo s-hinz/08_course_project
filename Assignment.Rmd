@@ -1,0 +1,98 @@
+---
+title: "Classification of Weight Lifting Execution"
+output: html_document
+---
+
+### Question
+
+For this assignment we look into data that is originally taken from http://groupware.les.inf.puc-rio.br/har.  
+The data was collected from 6 different participants performing barbell lifts.
+The participants were asked to perform the lifts in five different ways: the correct way and four different incorrect ways.  
+Which way they performed the exercise is stored in column "classe" of the data set. It can have the following values:  
+
+- A: exactly according to the specification  
+- B: throwing the elbows to the front  
+- C: lifting the dumbbell only halfway  
+- D: lowering the dumbbell only halfway  
+- E: throwing the hips to the front.  
+
+While they performed the exercises several sensors were collecting data.  
+The question is whether from the data collected by these sensors it can be derived how well the exercise was executed.  
+
+### Data
+First we load the data.
+```{r}
+# read the provided data sets
+training <- read.csv("data/pml-training.csv", na.strings=c("NA", "#DIV/0!"), stringsAsFactors=FALSE)
+testing  <- read.csv("data/pml-testing.csv", na.strings=c("NA", "#DIV/0!"), stringsAsFactors=FALSE)
+```
+
+The training data set includes `r nrow(training)` observations and has `r length(training)` variables.  
+The testing data set has the same number of variables but only `r nrow(testing)` observations. In this data set column "classe" is empty.
+  
+For the prediction we only want to use the data collected by the sensors. For that reason we first remove all other columns from the data sets.  
+
+We remove variable "X" which includes the rownumber. We also remove variable "user_name" which includes the name of the respective participant. 
+In addition there are three timestamp related and two window related columns that are excluded as well.  
+```{r}
+# remove "X", "user_name", timestamp related and window related
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+# convert the result column into a factor
+training$classe <- factor(training$classe)
+````
+
+Another challenge we face are missing values. We need to check which columns have missing values and need to exclude them from the model building.
+```{r}
+# determine which columns have missing values
+missing <- c()
+for (i in 1:ncol(training)) {
+    missing[i] <- sum(is.na(training[,i]))/nrow(training)
+}
+# we keep only the columns that don't have missing values
+training <- training[, missing==0]
+testing <- testing[, missing==0]
+```
+
+Before we start building a model we split our training data set so that we are able to properly test how accurate the model is.
+```{r}
+library(caret)
+set.seed(23456)
+trainIndex <- createDataPartition(training$classe, p = 0.75,list=FALSE)
+training2 <- training[trainIndex,]
+probing <- training[-trainIndex,]
+```
+
+
+### Finding a model
+
+Now we can build a classification model. We build a model using a random forest because this algorithm is known to create very accurate results. 
+```{r}
+library(randomForest)
+set.seed(12345)
+modFit <- randomForest(classe ~ ., data=training2)
+modFit
+```
+From this we can see that the model has an estimated error rate of 0.44%, i.e. an estimated accuracy of 99.56%.
+
+Now we need to check how accurate the model is on new data, i.e. on the probing data set.
+```{r}
+pred_probe <- predict(modFit, probing)
+sum(pred_probe==probing$classe)/nrow(probing)
+```
+The accuracy on the probing data set is `r round(100*sum(pred_probe==probing$classe)/nrow(probing),2)`%.
+This confirms the estimated high accuracy of the model.  
+
+So we can use this model.
+
+The five most important variables according to this model are (in decreasing order of importance):
+```{r}
+rownames(varImp(modFit))[order(varImp(modFit),decreasing=TRUE)][1:5]
+```
+
+
+### Predict results for the testing data set
+The following classes are predicted for the testing data set:
+````{r}
+predict(modFit, testing)
+````
